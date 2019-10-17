@@ -126,7 +126,7 @@ func getRandrOutput() bytes.Buffer {
 
 func parseDisplays(xrandrOutput bytes.Buffer) map[string]*Display {
 	displays := make(map[string]*Display, 0)
-	var d *Display
+	var d *Display = &Display{}
 	for {
 		line, err := xrandrOutput.ReadString('\n')
 		if err != nil {
@@ -152,8 +152,8 @@ func parseDisplays(xrandrOutput bytes.Buffer) map[string]*Display {
 			}
 			displays[segments[0]] = d
 		} else if segments[0] == "" && segments[1] == "" && segments[2] == "" {
-			if d == nil {
-				log.Fatalf("Error, Display is nil!")
+			if d.Name == "" {
+				log.Fatalf("Error, Display is not set!")
 			}
 			dimension := strings.Split(segments[3], "x")
 			x, err := strconv.Atoi(dimension[0])

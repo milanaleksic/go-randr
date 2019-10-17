@@ -15,10 +15,11 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const RandrApp = "xrandr"
+const RandrApp = "/usr/bin/xrandr"
 
 var dryRun bool
 var verbose bool
+var logFile io.Writer
 
 func main() {
 	configure()
@@ -36,10 +37,10 @@ func main() {
 	vga_or_dp := displays["DP-1"]
 	laptop := displays["eDP-1"]
 
-	if isThere(hdmi) {
+	if isThereDisconnected(hdmi) {
 		// direct hdmi detected
 		// --output eDP-1 --mode 1920x1080 --pos 1920x0 --output DP-1-1 --mode 1920x1080 --pos 0x0
-	} else if isThere(hdmi_direct) && isThere(hdmi_dock) {
+	} else if isThereDisconnected(hdmi_direct) && isThereDisconnected(hdmi_dock) {
 		log.Info("Work situation with 2 HDMI screens and laptop turned off!")
 		laptop.State = Disconnected
 		err := activate(hdmi_direct, hdmi_dock, laptop)
@@ -47,14 +48,14 @@ func main() {
 			laptop.State = Connected
 			_ = activate(laptop)
 		}
-	} else if isThere(hdmi_direct) {
+	} else if isThereDisconnected(hdmi_direct) {
 		log.Info("Single HDMI detected")
 		laptop.State = Connected
 		err := activate(hdmi_direct, laptop)
 		if err != nil {
 			_ = activate(laptop)
 		}
-	} else if isThere(vga_or_dp) {
+	} else if isThereDisconnected(vga_or_dp) {
 		// --output eDP-1 --mode 1920x1080 --pos 0x0 --output DP-1 --mode 2048x1152 --pos 1920x0
 		log.Info("Single VGA or Display Port detected")
 		laptop.State = Connected
@@ -64,7 +65,25 @@ func main() {
 		}
 	} else {
 		log.Info("Undefined State, so proceeding with the laptop only")
-		_ = activate(laptop)
+		screens := []*Display{}
+		if isThere(vga_or_dp) {
+			vga_or_dp.State = Disconnected
+			screens = append(screens, vga_or_dp)
+		}
+		if isThere(hdmi_direct) {
+			hdmi_direct.State = Disconnected
+			screens = append(screens, hdmi_direct)
+		}
+		if isThere(hdmi_dock) {
+			hdmi_dock.State = Disconnected
+			screens = append(screens, hdmi_dock)
+		}
+		if isThere(hdmi) {
+			hdmi.State = Disconnected
+			screens = append(screens, hdmi)
+		}
+		laptop.State = Connected
+		_ = activate(screens...)
 	}
 }
 
@@ -72,9 +91,10 @@ func configure() {
 	flag.BoolVar(&dryRun, "dry-run", true, "Should dry run be done?")
 	flag.BoolVar(&verbose, "verbose", false, "Should verbose information be shown?")
 	if file, err := os.OpenFile("/tmp/go-randr.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
-		log.SetOutput(io.MultiWriter(os.Stdout, file))
+		logFile = io.MultiWriter(os.Stdout, file)
+		log.SetOutput(logFile)
 	} else {
-		log.Fatalf("Failed to log to file, using default stderr")
+		log.Fatalf("Failed to log to file")
 	}
 	if verbose {
 		log.SetLevel(log.DebugLevel)
@@ -84,8 +104,12 @@ func configure() {
 	flag.Parse()
 }
 
-func isThere(d *Display) bool {
+func isThereDisconnected(d *Display) bool {
 	return d != nil && d.State == Connected
+}
+
+func isThere(d *Display) bool {
+	return d != nil
 }
 
 func activate(screens ...*Display) error {
@@ -106,8 +130,12 @@ func activate(screens ...*Display) error {
 	} else {
 		log.Info("Executing: ", args)
 		cmd := exec.Command(RandrApp, args...)
+		cmd.Env = []string{"DISPLAY=:0"}
+		var errOut bytes.Buffer
+		cmd.Stderr = &errOut
 		err := cmd.Run()
 		if err != nil {
+			log.Errorf("Output of the xrandr application: %s", errOut)
 			return err
 		}
 	}
@@ -116,14 +144,18 @@ func activate(screens ...*Display) error {
 
 func getRandrOutput() bytes.Buffer {
 	cmd := exec.Command(RandrApp)
+	cmd.Env = []string{"DISPLAY=:0"}
 	var out bytes.Buffer
+	var errOut bytes.Buffer
 	cmd.Stdout = &out
+	cmd.Stderr = &errOut
 	err := cmd.Run()
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			log.Fatalf("It seems that xrandr was not found on the $PATH, please install it" +
 				" (Ubuntu has it in x11-xserver-utils package for example)")
 		} else {
+			log.Errorf("Output of the xrandr application: %s", errOut)
 			log.Fatal(err)
 		}
 	}

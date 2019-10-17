@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -70,6 +71,11 @@ func main() {
 func configure() {
 	flag.BoolVar(&dryRun, "dry-run", true, "Should dry run be done?")
 	flag.BoolVar(&verbose, "verbose", false, "Should verbose information be shown?")
+	if file, err := os.OpenFile("/tmp/go-randr.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
+		log.SetOutput(io.MultiWriter(os.Stdout, file))
+	} else {
+		log.Fatalf("Failed to log to file, using default stderr")
+	}
 	if verbose {
 		log.SetLevel(log.DebugLevel)
 	} else {

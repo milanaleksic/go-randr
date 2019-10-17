@@ -7,26 +7,27 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const RandrApp = "xrandr"
 
 var dryRun bool
+var verbose bool
 
 func main() {
-	flag.BoolVar(&dryRun, "dry-run", true, "Should dry run be done?")
-	flag.Parse()
+	configure()
 
 	displays := parseDisplays(getRandrOutput())
 	marshal, err := json.Marshal(displays)
 	if err != nil {
 		log.Fatalf("It is not expected that marshal doesn't work: %v", err)
 	}
-	log.Printf("Deduced displays: %s", marshal)
+	log.Debug("Deduced displays: %s", marshal)
 
 	hdmi := displays["DP-1-1"]
 	hdmi_dock := displays["DP-2-1"]
@@ -36,9 +37,9 @@ func main() {
 
 	if isThere(hdmi) {
 		// direct hdmi detected
-		// --output eDP-1 --Mode 1920x1080 --pos 1920x0 --output DP-1-1 --Mode 1920x1080 --pos 0x0
+		// --output eDP-1 --mode 1920x1080 --pos 1920x0 --output DP-1-1 --mode 1920x1080 --pos 0x0
 	} else if isThere(hdmi_direct) && isThere(hdmi_dock) {
-		log.Println("Work situation with 2 HDMI screens and laptop turned off!")
+		log.Info("Work situation with 2 HDMI screens and laptop turned off!")
 		laptop.State = Disconnected
 		err := activate(hdmi_direct, hdmi_dock, laptop)
 		if err != nil {
@@ -46,24 +47,35 @@ func main() {
 			_ = activate(laptop)
 		}
 	} else if isThere(hdmi_direct) {
-		log.Println("Single HDMI detected")
+		log.Info("Single HDMI detected")
 		laptop.State = Connected
 		err := activate(hdmi_direct, laptop)
 		if err != nil {
 			_ = activate(laptop)
 		}
 	} else if isThere(vga_or_dp) {
-		// --output eDP-1 --Mode 1920x1080 --pos 0x0 --output DP-1 --Mode 2048x1152 --pos 1920x0
-		log.Println("Single VGA or Display Port detected")
+		// --output eDP-1 --mode 1920x1080 --pos 0x0 --output DP-1 --mode 2048x1152 --pos 1920x0
+		log.Info("Single VGA or Display Port detected")
 		laptop.State = Connected
 		err := activate(vga_or_dp, laptop)
 		if err != nil {
 			_ = activate(laptop)
 		}
 	} else {
-		log.Println("Undefined State, so proceeding with the laptop only")
+		log.Info("Undefined State, so proceeding with the laptop only")
 		_ = activate(laptop)
 	}
+}
+
+func configure() {
+	flag.BoolVar(&dryRun, "dry-run", true, "Should dry run be done?")
+	flag.BoolVar(&verbose, "verbose", false, "Should verbose information be shown?")
+	if verbose {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+	flag.Parse()
 }
 
 func isThere(d *Display) bool {
@@ -76,7 +88,7 @@ func activate(screens ...*Display) error {
 	for _, screen := range screens {
 		args = append(args, "--output", screen.Name)
 		if screen.State == Connected {
-			args = append(args, "--Mode", fmt.Sprintf("%dx%d", screen.Modes[0].X, screen.Modes[0].Y))
+			args = append(args, "--mode", fmt.Sprintf("%dx%d", screen.Modes[0].X, screen.Modes[0].Y))
 			args = append(args, "--pos", fmt.Sprintf("%dx0", xpos))
 			xpos += screen.Modes[0].X
 		} else {
@@ -84,9 +96,9 @@ func activate(screens ...*Display) error {
 		}
 	}
 	if dryRun {
-		log.Println("Would have executed: ", args)
+		log.Info("Would have executed: ", args)
 	} else {
-		log.Println("Executing: ", args)
+		log.Info("Executing: ", args)
 		cmd := exec.Command(RandrApp, args...)
 		err := cmd.Run()
 		if err != nil {
@@ -123,7 +135,7 @@ func parseDisplays(xrandrOutput bytes.Buffer) map[string]*Display {
 			}
 			log.Fatalf("Error while reading xrandr output %v", err)
 		}
-		log.Printf("LINE: %q\n", strings.TrimSpace(line))
+		log.Debugf("LINE: %q\n", strings.TrimSpace(line))
 		segments := strings.Split(line, " ")
 		if len(segments) < 2 {
 			log.Fatalf("Expected at least 2 items in each line of output, got: " + line)
@@ -146,12 +158,12 @@ func parseDisplays(xrandrOutput bytes.Buffer) map[string]*Display {
 			dimension := strings.Split(segments[3], "x")
 			x, err := strconv.Atoi(dimension[0])
 			if err != nil {
-				log.Printf("Wrong number detected for X: %v", line)
+				log.Debugf("Ingoring resolution since wrong number detected for X: %v", line)
 				continue
 			}
 			y, err := strconv.Atoi(dimension[1])
 			if err != nil {
-				log.Printf("Wrong number detected for Y: %v", line)
+				log.Debugf("Ingoring resolution since wrong number detected for Y: %v", line)
 				continue
 			}
 			d.Modes = append(d.Modes, Mode{
@@ -159,8 +171,7 @@ func parseDisplays(xrandrOutput bytes.Buffer) map[string]*Display {
 				Y: y,
 			})
 		} else {
-			fmt.Printf("LINE: %q\n", strings.TrimSpace(line))
-			log.Println("Ignoring for now")
+			log.Debug("LINE IGNORED: %q\n", strings.TrimSpace(line))
 		}
 	}
 	return displays

@@ -32,10 +32,10 @@ func main() {
 	log.Debug("Deduced displays: %s", marshal)
 
 	hdmi := displays["DP-1-1"]
-	hdmi_dock := displays["DP-2-1"]
-	hdmi_direct := displays["HDMI-1"]
+	hdmi_dock := displays["DP-1-2-1"]
+	hdmi_direct := displays["HDMI-1-1"]
 	vga_or_dp := displays["DP-1"]
-	laptop := displays["eDP-1"]
+	laptop := displays["eDP-1-1"]
 
 	if isThereDisconnected(hdmi) {
 		// direct hdmi detected
@@ -65,7 +65,8 @@ func main() {
 		}
 	} else {
 		log.Info("Undefined State, so proceeding with the laptop only")
-		screens := []*Display{}
+		laptop.State = Connected
+		screens := []*Display{laptop}
 		if isThere(vga_or_dp) {
 			vga_or_dp.State = Disconnected
 			screens = append(screens, vga_or_dp)
@@ -82,7 +83,6 @@ func main() {
 			hdmi.State = Disconnected
 			screens = append(screens, hdmi)
 		}
-		laptop.State = Connected
 		_ = activate(screens...)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
+	i3 "go.i3wm.org/i3/v4"
 )
 
 const RandrApp = "/usr/bin/xrandr"
@@ -84,6 +85,9 @@ func main() {
 			screens = append(screens, hdmi)
 		}
 		_ = activate(screens...)
+	}
+	if err := i3.Restart(); err != nil {
+		log.Warnf("Error encountered while restarting i3: %v", err)
 	}
 }
 

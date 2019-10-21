@@ -86,8 +86,10 @@ func main() {
 		}
 		_ = activate(screens...)
 	}
-	if err := i3.Restart(); err != nil {
-		log.Warnf("Error encountered while restarting i3: %v", err)
+	if !dryRun {
+		if err := i3.Restart(); err != nil {
+			log.Warnf("Error encountered while restarting i3: %v", err)
+		}
 	}
 }
 

@@ -13,10 +13,10 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	i3 "go.i3wm.org/i3/v4"
+	"go.i3wm.org/i3/v4"
 )
 
-const RandrApp = "/usr/bin/xrandr"
+const RandrApp = "xrandr"
 
 var dryRun bool
 var verbose bool
@@ -32,35 +32,31 @@ func main() {
 	}
 	log.Debug("Deduced displays: %s", marshal)
 
-	hdmi := displays["DP-1-1"]
-	hdmi_dock := displays["DP-1-2-1"]
-	hdmi_direct := displays["HDMI-1-1"]
-	vga_or_dp := displays["DP-1"]
+	vgaOrDp := displays["DP-1-1"]
+	hdmiDock := displays["DP-1-2-1"]
+	hdmiDirect := displays["HDMI-1-1"]
 	laptop := displays["eDP-1-1"]
 
-	if isThereDisconnected(hdmi) {
-		// direct hdmi detected
-		// --output eDP-1 --mode 1920x1080 --pos 1920x0 --output DP-1-1 --mode 1920x1080 --pos 0x0
-	} else if isThereDisconnected(hdmi_direct) && isThereDisconnected(hdmi_dock) {
+	if isThereDisconnected(hdmiDirect) && isThereDisconnected(hdmiDock) {
 		log.Info("Work situation with 2 HDMI screens and laptop turned off!")
 		laptop.State = Disconnected
-		err := activate(hdmi_direct, hdmi_dock, laptop)
+		err := activate(hdmiDirect, hdmiDock, laptop)
 		if err != nil {
 			laptop.State = Connected
 			_ = activate(laptop)
 		}
-	} else if isThereDisconnected(hdmi_direct) {
+	} else if isThereDisconnected(hdmiDirect) {
 		log.Info("Single HDMI detected")
 		laptop.State = Connected
-		err := activate(hdmi_direct, laptop)
+		err := activate(hdmiDirect, laptop)
 		if err != nil {
 			_ = activate(laptop)
 		}
-	} else if isThereDisconnected(vga_or_dp) {
+	} else if isThereDisconnected(vgaOrDp) {
 		// --output eDP-1 --mode 1920x1080 --pos 0x0 --output DP-1 --mode 2048x1152 --pos 1920x0
 		log.Info("Single VGA or Display Port detected")
 		laptop.State = Connected
-		err := activate(vga_or_dp, laptop)
+		err := activate(vgaOrDp, laptop)
 		if err != nil {
 			_ = activate(laptop)
 		}
@@ -68,21 +64,17 @@ func main() {
 		log.Info("Undefined State, so proceeding with the laptop only")
 		laptop.State = Connected
 		screens := []*Display{laptop}
-		if isThere(vga_or_dp) {
-			vga_or_dp.State = Disconnected
-			screens = append(screens, vga_or_dp)
+		if isThere(vgaOrDp) {
+			vgaOrDp.State = Disconnected
+			screens = append(screens, vgaOrDp)
 		}
-		if isThere(hdmi_direct) {
-			hdmi_direct.State = Disconnected
-			screens = append(screens, hdmi_direct)
+		if isThere(hdmiDirect) {
+			hdmiDirect.State = Disconnected
+			screens = append(screens, hdmiDirect)
 		}
-		if isThere(hdmi_dock) {
-			hdmi_dock.State = Disconnected
-			screens = append(screens, hdmi_dock)
-		}
-		if isThere(hdmi) {
-			hdmi.State = Disconnected
-			screens = append(screens, hdmi)
+		if isThere(hdmiDock) {
+			hdmiDock.State = Disconnected
+			screens = append(screens, hdmiDock)
 		}
 		_ = activate(screens...)
 	}
@@ -94,8 +86,18 @@ func main() {
 }
 
 func configure() {
+	configureFlags()
+	configureLog()
+	configurePath()
+}
+
+func configureFlags() {
 	flag.BoolVar(&dryRun, "dry-run", true, "Should dry run be done?")
 	flag.BoolVar(&verbose, "verbose", false, "Should verbose information be shown?")
+	flag.Parse()
+}
+
+func configureLog() {
 	if file, err := os.OpenFile("/tmp/go-randr.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err == nil {
 		logFile = io.MultiWriter(os.Stdout, file)
 		log.SetOutput(logFile)
@@ -107,7 +109,16 @@ func configure() {
 	} else {
 		log.SetLevel(log.InfoLevel)
 	}
-	flag.Parse()
+	log.SetReportCaller(true)
+}
+
+func configurePath() {
+	activePath := os.Getenv("PATH")
+	newPath := "/usr/bin"
+	log.Info("Changing PATH from %v to %v", activePath, newPath)
+	if err := os.Setenv("PATH", newPath); err != nil {
+		log.Fatalf("Error happened while trying to change the env variable PATH: %v", err)
+	}
 }
 
 func isThereDisconnected(d *Display) bool {
@@ -119,14 +130,14 @@ func isThere(d *Display) bool {
 }
 
 func activate(screens ...*Display) error {
-	xpos := 0
+	xPos := 0
 	args := make([]string, 0)
 	for _, screen := range screens {
 		args = append(args, "--output", screen.Name)
 		if screen.State == Connected {
 			args = append(args, "--mode", fmt.Sprintf("%dx%d", screen.Modes[0].X, screen.Modes[0].Y))
-			args = append(args, "--pos", fmt.Sprintf("%dx0", xpos))
-			xpos += screen.Modes[0].X
+			args = append(args, "--pos", fmt.Sprintf("%dx0", xPos))
+			xPos += screen.Modes[0].X
 		} else {
 			args = append(args, "--off")
 		}
@@ -170,7 +181,7 @@ func getRandrOutput() bytes.Buffer {
 
 func parseDisplays(xrandrOutput bytes.Buffer) map[string]*Display {
 	displays := make(map[string]*Display, 0)
-	var d *Display = &Display{}
+	var d = &Display{}
 	for {
 		line, err := xrandrOutput.ReadString('\n')
 		if err != nil {
@@ -202,12 +213,12 @@ func parseDisplays(xrandrOutput bytes.Buffer) map[string]*Display {
 			dimension := strings.Split(segments[3], "x")
 			x, err := strconv.Atoi(dimension[0])
 			if err != nil {
-				log.Debugf("Ingoring resolution since wrong number detected for X: %v", line)
+				log.Debugf("Ignoring resolution since wrong number detected for X: %v", line)
 				continue
 			}
 			y, err := strconv.Atoi(dimension[1])
 			if err != nil {
-				log.Debugf("Ingoring resolution since wrong number detected for Y: %v", line)
+				log.Debugf("Ignoring resolution since wrong number detected for Y: %v", line)
 				continue
 			}
 			d.Modes = append(d.Modes, Mode{

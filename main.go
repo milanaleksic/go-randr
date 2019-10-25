@@ -88,7 +88,7 @@ func main() {
 func configure() {
 	configureFlags()
 	configureLog()
-	configurePath()
+	configureEnvironment()
 }
 
 func configureFlags() {
@@ -112,12 +112,12 @@ func configureLog() {
 	log.SetReportCaller(true)
 }
 
-func configurePath() {
-	activePath := os.Getenv("PATH")
-	newPath := "/usr/bin"
-	log.Info("Changing PATH from %v to %v", activePath, newPath)
-	if err := os.Setenv("PATH", newPath); err != nil {
+func configureEnvironment() {
+	if err := os.Setenv("PATH", "/usr/bin"); err != nil {
 		log.Fatalf("Error happened while trying to change the env variable PATH: %v", err)
+	}
+	if err := os.Setenv("DISPLAY", ":0"); err != nil {
+		log.Fatalf("Error happened while trying to change the env variable DISPLAY: %v", err)
 	}
 }
 

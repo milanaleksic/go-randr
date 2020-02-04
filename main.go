@@ -32,49 +32,23 @@ func main() {
 	}
 	log.Debug("Deduced displays: %s", marshal)
 
-	vgaOrDp := displays["DP-1-1"]
-	hdmiDock := displays["DP-1-2-1"]
-	hdmiDirect := displays["HDMI-1-1"]
-	laptop := displays["eDP-1-1"]
+	vgaPhobos := displays["VGA-1"]
+	laptopPhobos := displays["LVDS-1"]
 
-	if isThereDisconnected(hdmiDirect) && isThereDisconnected(hdmiDock) {
-		log.Info("Work situation with 2 HDMI screens and laptop turned off!")
-		laptop.State = Disconnected
-		err := activate(hdmiDirect, hdmiDock, laptop)
+	if isThereConnected(vgaPhobos) {
+		log.Info("Single VGA detected")
+		laptopPhobos.State = Connected
+		err := activate(vgaPhobos, laptopPhobos)
 		if err != nil {
-			laptop.State = Connected
-			_ = activate(laptop)
-		}
-	} else if isThereDisconnected(hdmiDirect) {
-		log.Info("Single HDMI detected")
-		laptop.State = Connected
-		err := activate(hdmiDirect, laptop)
-		if err != nil {
-			_ = activate(laptop)
-		}
-	} else if isThereDisconnected(vgaOrDp) {
-		// --output eDP-1 --mode 1920x1080 --pos 0x0 --output DP-1 --mode 2048x1152 --pos 1920x0
-		log.Info("Single VGA or Display Port detected")
-		laptop.State = Connected
-		err := activate(vgaOrDp, laptop)
-		if err != nil {
-			_ = activate(laptop)
+			_ = activate(laptopPhobos)
 		}
 	} else {
-		log.Info("Undefined State, so proceeding with the laptop only")
-		laptop.State = Connected
-		screens := []*Display{laptop}
-		if isThere(vgaOrDp) {
-			vgaOrDp.State = Disconnected
-			screens = append(screens, vgaOrDp)
-		}
-		if isThere(hdmiDirect) {
-			hdmiDirect.State = Disconnected
-			screens = append(screens, hdmiDirect)
-		}
-		if isThere(hdmiDock) {
-			hdmiDock.State = Disconnected
-			screens = append(screens, hdmiDock)
+		log.Info("Undefined State, so proceeding with the laptopPhobos only")
+		laptopPhobos.State = Connected
+		screens := []*Display{laptopPhobos}
+		if isThere(vgaPhobos) {
+			vgaPhobos.State = Disconnected
+			screens = append(screens, vgaPhobos)
 		}
 		_ = activate(screens...)
 	}
@@ -121,7 +95,7 @@ func configureEnvironment() {
 	}
 }
 
-func isThereDisconnected(d *Display) bool {
+func isThereConnected(d *Display) bool {
 	return d != nil && d.State == Connected
 }
 
